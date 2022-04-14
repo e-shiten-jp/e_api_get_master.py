@@ -29,7 +29,7 @@ import time
 str_master_filename = './master.txt'
     
 
-
+# --------------------------------------------------
 
 # おまけ。 営業日を取得。
 try:
