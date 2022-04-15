@@ -265,14 +265,20 @@ def func_login(url_base, my_userid, my_passwd, class_cust_property):
 # 引数5： 保存するマスターのファイル名
 # 備考： 通常のrequestの接続とは異なる接続。ストリーミングでの接続。
 def func_api_req_download(auth_flg, url_target, class_cust_property, work_class_req, str_master_filename):
+    byte_data = b''
+    str_data = ''
+
+    # マスターの終端文字列をセット
+    str_terminate = 'CLMEventDownloadComplete'
+    # マニュアル「立花証券・ｅ支店・ＡＰＩ（ｖ４ｒ２）、REQUEST I/F、利用方法、データ仕様」
+    # p3/6 ２．利用方法、(3)業務機能、
+    # No20-16 初期ダウンロード終了通知 CLMEventDownloadComplete 参照。
     
+
     work_url = func_make_url_request(auth_flg, url_target, class_cust_property, work_class_req)  # ログインは第１引数にTrueをセット
     print('送信文字列＝')
     print(work_url)  # 送信する文字列
 
-    # マスターの終端文字列をセット
-##    byte_terminated_string = b'"CLMEventDownloadComplete"\n}\n'
-##    byte_terminated_string = byte_terminated_string[-28:-4]       # sJsonOfmit=4 の場合
 
     print('マスターダウンロード開始')
     print('データが大きいため時間がかかります。')
@@ -288,25 +294,36 @@ def func_api_req_download(auth_flg, url_target, class_cust_property, work_class_
         work_url,
         preload_content=False)
     
-    with open(str_master_filename, 'w') as f:
-        for chunk in resp.stream(2048):
-            str_chunk = chunk.decode('shift-jis', errors = 'replace')
-            if str_chunk[-1:] == '}' :
-                str_chunk = str_chunk + '\n'
-
-            f.write(str_chunk)
-
-            json_chunk = json.loads(str_chunk)
-            if json_chunk.get('sCLMID') == 'CLMEventDownloadComplete' :
-##            if chunk[-26:-2] == byte_terminated_string :      # json形式にしない場合。sJsonOfmit=4 の場合。
-                print()
-                print('最終chunk=',chunk)
-                print('terminate_string=',chunk[-26:-2])
-                f.close()
-                break
+    try :
+            
+        with open(str_master_filename, 'w') as f:
+            for chunk in resp.stream(1024):
+                byte_data = byte_data + chunk
+                if byte_data[-1:] == b'}' :         # 1データの終わりを判定する。
+                    str_data = byte_data.decode('shift-jis', errors = 'replace')
+                    str_data = str_data + '\n'      # 簡単に扱えるようにするため、１行1データとして保存する。
+                    f.write(str_data)
+                    ## print(str_data)
+                    byte_data = b''
+                    
+                    json_data = json.loads(str_data)
+                    if json_data.get('sCLMID') == str_terminate :   # 初期ダウンロード終了通知をチェック。
+                        print()
+                        print('最終データ=', str_data)
+                        print('terminate_string: "sCLMID":', json_data.get('sCLMID'))
+                        f.close()
+                        break
+                    else :
+                        str_data = ''
+                
+    except IOError as e:
+        print('File can not write!!!')
+        print(type(e))
+        #print(chunk)
+            
 
     resp.release_conn()
-    
+
     return resp.data
 
 
